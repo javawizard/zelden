@@ -1,0 +1,72 @@
+This is my second time writing out stuff on Zelden. I'll import the older documents I wrote out at some point.
+
+So I've decided that, in the interest of getting the server/client working as soon as possible, I'm not going to have the server store its data in JPath. I think I'm going to use a traditional relational database instead, and switch over once JPath is in a workable state.
+
+So I've been using Quassel recently and it's given me some ideas. One huge idea is the chat monitor; it's a view that shows all messages received, no matter what user, channel, or account they're from. It's an interesting concept that I think I'm going to write into Zelden too.
+
+And speaking of that: views. This is a generalized notion of a conversation that I'm slowly coming up with. The idea would be that a view shows a series of messages, and optionally provides a space for writing new messages. It would also optionally provide a space indicating users contributing to that view; this would be used, for example, in channels to show the channel members; it would be hidden in normal
+
+Conversations would be a particular type of view; the chat monitor would also be a view, but one without support for sending messages. Plugins could also provide views where they could log information and perhaps allow the user to instruct them to do things by sending messages of a particular format.
+
+Then I'm also thinking there should be a notion of screens, which are like views but without the whole messaging idea on top of them. Screens would simply display a block of HTML, with the ability for said HTML to communicate with the server-side plugin that created it via certain JavaScript functions. Screens need to be thought out more.
+
+Then there are settings. These are going to be nearly identical to the notion of configuration variables present in JZBot. There's a root settings folder, which contains other settings and folders. Folders can contain arbitrarily-nested folders. Settings have a name and a description; I may add support for a longer description at some point, but for now, there's just going to be the name and a short-ish description.
+
+Settings have an identifier as well, which is used when referring to the setting in code. Settings also have a type; I'm thinking that for now this should be one of bool (a boolean; would most likely show up as a checkbox), integer (a whole number; text field in desktop clients and spinner in the Android client), decimal (text field that's checked when the OK button is clicked), text (a single-line piece of text), essay (a multi-line piece of text), password (a single-line piece of text that's masked when displayed to the user, although I'm thinking there should be a checkbox that the user can temporarily check to see the contents of the password field), and option (a choice from among a list of predefined options; in the future, I may add support for custom values to be set by the user for some certain fields).
+
+Settings also have a flag indicating whether they can contain multiple values; settings that can contain multiple values allow ordered lists of values of the setting's type.
+
+Non-list settings have a default value, which will be used as the value for the setting if it's unset (and clients should provide a UI for unsetting settings). Such settings that are currently set are stored as if they were lists of one value, and such settings that are currently unset are stored as if they were lists containing no values. Settings that become lists from non-lists have one value if they were set and zero values if they were unset. Settings that become non-lists from lists take the value of their first item but preserve the rest of the items in the database until the user manually unsets the setting, which clears the items from the list. So list settings that have no values are inherently unset, and as such no UI is provided to unset a list setting, unless the client wants to provide one in which case it's essentially a shortcut for clearing the list as this is the action that the server takes when asked to unset a setting.
+
+For settings that are of type option, there's also an additional property: the list of options for the setting. Each option in this list consists of two values: the name of the option (the value that's stored in the database as the setting's value when this option is chosen; also the value passed through code when this option is chosen), and the option's label (the text that's shown to the user when they're choosing the option value). The list of valid options can be added to and removed from in real time by a plugin. Option settings cannot be set to a value not present in the setting's list of choices, and if a particular option is removed and the option setting currently held that value, its value appears to be changed to be the default.
+
+Note that if an option setting does not have a default value, or if the default value is not a valid option, the option will be unset. This is perfectly valid for an option to be unset, and the only way to create an option setting that cannot be unset is to provide it with a default that is in the list of the setting's valid options.
+
+Settings also have a flag indicating whether or not they're enabled. This, like most other things about settings, is not stored in the database, but it is sent to the client, and clients should gray out disabled options. Such options should be used in preference to simply deleting an option and re-creating it when it's a relevant option, for two reasons: 1, this will typically look cleaner, since things don't have to constantly shift around, and 2, the user can then see that the option actually exists, and they can see the option's name and description (although they will be unable to edit it).
+
+The idea with enabled/disabled options is that an option setting can be created with one of its options being "other", and setting it to that option would cause another setting just below it to enable and allow the user to enter a custom value.
+
+Folders, like any other setting, can be disabled; disabling a folder implicitly disables every setting contained within it (including other folders and their contained settings). It's up to a particular client whether or not to allow the contents of such folders to be viewed; like other settings, however, said contents cannot be edited.
+
+The server will actually enforce that disabled settings cannot be modified. I haven't decided yet whether or not the server will simply ignore such a request or whether it will send a response to the client saying that the setting has been disabled. I'm leaning toward the latter so that the client can pop up a message telling the user that the setting was disabled.
+
+The server will also enforce that a setting cannot be set to a value that's not valid for the setting's type; this includes option settings, meaning that the server will not allow a client to set a setting to a value not in the list of options for that setting if the setting is of type option.
+
+If a setting changes types and the new type enforces a constraint that the current value does not satisfy (for example, the setting was formerly text and the current value is some string of characters, but the setting has now become an integer setting), the setting will be reported as currently being set to its default value.
+
+Also, quick note: while settings can change their type, they cannot change whether or not they are a folder, i.e. non-folder settings cannot become folders and folder settings cannot become non-folder settings. The database storage for settings will ensure that such a thing does not cause conflicts (folders aren't actually stored in the database; 
+
+
+
+Ok, I think that about works out the settings system. I'm not going to get too much into implementation yet, but I think that it would be nice if settings were represented in the server as instances of classes that could be defined on a per-plugin basis; StoredSetting would be a setting class provided by Zelden that stores its data to the database. The ability of plugins to provide their own settings classes would mean that settings don't necessarily need to be tied directly to the database; some plugins might end up finding this useful. The idea would be that settings have functions for registering listeners to be notified when the setting's value, options, type, name, description, etc change, and a default ABC called Setting would provide these methods and methods such as fire_value_changed() for subclasses to call. Settings that are folders would have listeners to listen for settings within said folders being added or removed, and probably listeners for listening for child settings being reordered.
+
+
+
+So now, of course, we hit upon a huge topic: there's beginning to be a significant overlap between a lot of Zelden storage things and the settings storage mechanism. So the question is: what should be stored where?
+
+You know what... Before I answer all of that, I'm going to write out stuff about all of the other aspects of how Zelden works, and see if I don't have a clearer answer by then.
+
+(Also, I need to think of how clients should store client-specific settings, and whether or not the server should be able to manage any client-specific settings at all; such a thing would be useful if a user wanted to open a client of the same type on a different computer and preserve their former settings; perhaps a number of client profiles should be creatable, which each govern the configuration of a client, and clients can switch between client profiles if they choose to make use of that mechanism. It's something to think about.)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
