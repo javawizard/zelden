@@ -100,13 +100,33 @@ I mentioned screens near the top of this file; I'll get to them in a second.
 
 I'll also get to forms in a second, after I discuss my idea of actions.
 
-So my thing I'm thinking about with actions is that things like contacts and accounts and chat rooms and users and things like that could have actions associated with them. Actions have a name, optionally a description, and some information describing what should happen when said action is triggered. There are three things I'm thinking can happen when an action is triggered:
+So my thing I'm thinking about with actions is that things like contacts and accounts and chat rooms and users and things like that could have actions associated with them. Actions have a name, optionally a description, and some information describing the action to the server so that it can dispatch it to the correct plugin and so that the plugin knows what to do. When an action is triggered, a message will be sent to the server, providing information about the action and the object on which it was fired. The server then uses this to route the action to the appropriate plugin, which will come up with a response.
 
-1: A message is sent to the server indicating that the action was triggered by the user. This message will include information abuot the object on which the action occurred. When the server sends a response, it will be shown to the user, unless the response does not include text to show to the user.
+The response can be one of five different types:
 
-2: A form is shown to the user. Forms, right now, are simply lists of fields; each field has a name and optionally a description. Each field is shown as a text field; I may add more field types at some point. The form has a cancel button and any number of buttons specified along with the action; when one of these is pressed, the data in the form, information about which button was pressed, and information about the object that this action happened on are sent to the server in a message. When a response arrives, it will be shown to the user, unless the response does not include text to show to the user.
+1: A null response; nothing will happen. The client should essentially discard this response and not show the user anything.
 
-3: A screen is opened. This needs a lot more thought, but the idea would be that information about the action and the object on which it was triggered would be sent back to the server, and it would ask the plugin that registered the action for the HTML that it should show, and then send it back to the client. The screen could then communicate with the plugin 
+2: A notification response. This will contain a short message, which the client should notify the user of. I expect the Android client to show a message of this type as a toast.
+
+3: A message response. This will contain a piece of text, similar to notification responses; the difference is that the text is expected to be longer, and so it will be shown as an alert box that the user can dismiss. I expect both notifications and message responses to be shown the same in the desktop client for now.
+
+4: A form response. This will contain some instructions, a list of fields, each field having a name, a label, a default value, and an optional description, and a list of actions, each of which consists of a name and a label. The fields are shown as text boxes; once the user fills them out, and presses one of the action buttons, the action will again be fired, this time including the submitted form information. (I'm thinking hidden fields should also somehow be possible.) If the user hits cancel, this is sent to the server and the form is discarded. The response from the server in that case can only be of type 1, 2, or 3.
+
+5: A screen response. This provides the HTML to show in a screen and the information needed to wire up that screen's javascript objects to the plugin to which the action was dispatched. A screen showing said HTML will then be displayed.
+
+I'm also thinking about adding a sixth type of response, which would need some more thought:
+
+6: A settings response. This instructs the client to display a particular settings page for a particular object. This could be used by an action that creates a new settings folder to actually open said folder to allow the user to further configure it. An example I was thinking of would be an alarm plugin for Zelden that sets off an insistent notification (a notification that repeats a certain sound over and over again until it's dismissed, and one that probably hovers over the user's screen on a desktop client) whenever the time specified by any alarm happens; there would be a global action called "create alarm" or some such thing, and this would create a settings folder for that alarm and then switch to it in the client.
+
+(I've been thinking about the Android client during design of this system, so I need to make sure that all these ideas work for the desktop client too.)
+
+That also gives me an idea: allow settings folders to contain actions, which, when tapped, trigger certain actions on that settings folder. Alarms could be implemented entirely in terms of settings, with an action in the "Alarms" folder called "Create alarm" that creates a new alarm folder and switches to it, and an action in each alarm folder called "Delete alarm" that would respond with a form containing the instructions "Are you sure you want to delete this alarm?" and a response titled "Delete" or some such thing. (and note on settings: if a setting folder that a client is currently visiting is deleted, it should switch to the parent folder, unless it's been deleted in which case it should switch to its parent folder, and so on.)
+
+That might actually allow accounts to be implemented in terms of settings, but I'm not yet sure if I actually want to do that. More thought on this is needed.
+
+Also, actions within settings folders should be disableable as well, but their disabled state should be tri-value: enabled, disabled, or follow-folder, the latter of which means that the action's enabled state follows that of its parent folder.
+
+(Also, on alarms: the description for each alarm's folder could read "This alarm will go off in 17 hours and 42 minutes" if it's enabled, or "This alarm is disabled" if it's disabled. This also highlights the need for the ability to alter the description of a setting or folder live.) 
 
 
 
