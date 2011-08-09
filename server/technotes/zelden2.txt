@@ -34,7 +34,11 @@ The server will also enforce that a setting cannot be set to a value that's not 
 
 If a setting changes types and the new type enforces a constraint that the current value does not satisfy (for example, the setting was formerly text and the current value is some string of characters, but the setting has now become an integer setting), the setting will be reported as currently being set to its default value.
 
-Also, quick note: while settings can change their type, they cannot change whether or not they are a folder, i.e. non-folder settings cannot become folders and folder settings cannot become non-folder settings. The database storage for settings will ensure that such a thing does not cause conflicts (folders aren't actually stored in the database; 
+Also, quick note: while settings can change their type, they cannot change whether or not they are a folder, i.e. non-folder settings cannot become folders and folder settings cannot become non-folder settings. The database storage for settings will ensure that such a thing does not cause conflicts (folders aren't actually stored in the database; settings are instead stored with their full path spelled out, although I may change this if it ends up taking up too much space).
+
+Another quick note: the function used for sticking a new value into a setting can throw an exception of a certain to-be-determined class that indicates that the value to be set is not valid. StoredSetting would allow listeners to be provided when an instance of it is created that are notified of the new value before it's set; these can throw a not valid exception if they want to, and it will propagate it out. If a message arrives from a client indicating that a particular setting is to be altered, and an exception is thrown, a message will be sent back to the client with the exception's detail message; clients can then use that to display a "This setting could not be modified: insert exception message here" sort of message.
+
+A third quick note: I'm also thinking that settings should not be able to change type while actually existing. By that, I mean that I don't think it should be possible to change the type of a setting that Zelden itself is already aware of; the setting would have to be unregistered and then re-registered under its new type. This is just a thought.
 
 
 
@@ -47,6 +51,62 @@ So now, of course, we hit upon a huge topic: there's beginning to be a significa
 You know what... Before I answer all of that, I'm going to write out stuff about all of the other aspects of how Zelden works, and see if I don't have a clearer answer by then.
 
 (Also, I need to think of how clients should store client-specific settings, and whether or not the server should be able to manage any client-specific settings at all; such a thing would be useful if a user wanted to open a client of the same type on a different computer and preserve their former settings; perhaps a number of client profiles should be creatable, which each govern the configuration of a client, and clients can switch between client profiles if they choose to make use of that mechanism. It's something to think about.)
+
+So... We have accounts. Accounts are the same as in Pidgin: they're the details needed to connect as a particular user to a particular chat system. For most protocols, this would include a server, a username, and a password. Each account should have a group of settings tied to it; individual protocol plugins would register settings like server, usernamd, and password, and other protocols could register their own per-account settings as needed.
+
+Hm... Now I need to think about the fundamental differences between users and contacts. There was a suggestion a while back (I think by Matias) to create a contact for every user interaction that occurs, the rationale being that said interaction would be logged anyway and so creating a hidden contact on top of it couldn't be that expensive. I rather like this idea since it has amortized constant space overhead; events triggered by a contact would outweigh the space taken up by the contact record itself. The only potential problem would be that users included simply because of their being present at a channel upon join would a significant amount of overhead; a user spamming a channel with repeated joins using different nicks would likewise trigger this problem.
+
+Of course, the other problem is that an IRC nickname does not always distinguish a user from another, since nicknames are, in general, volatile. This making me think more and more that contacts should not be implicitly created.
+
+So, in that case, what exactly are contacts?
+
+Or rather, what sort of things do contacts need to be able to do?
+
+Well...
+
+It should be possible to start a conversation with a contact, which means that the contact should have enough protocol-specific information to identify a single user on a single account. (For example, IRC requires only the user's nick, while XMPP requires only the user's JID.)
+
+It should also be possible to attribute any messages or events that pertain to a particular contact to that contact.
+
+So it seems like the information that defines a contact should be the same as the information that defines a user for the sake of private messaging.
+
+Does that work with existing protocols? Let's see...
+
+IRC: A user/contact is identified based on their nick. Conversations can be initiated with them based on this, messages sourced from that nick can be identified, and so on. This sounds like a workable idea.
+
+XMPP: A user/contact is identified based on their JID. This also satisfies all of the requirements: messages coming from a resource under that JID are attributed to that contact, and messages sent to that contact would be sent to the JID. That works.
+
+AIM: A user/contact is identified based on their screen name. That works just like the others do.
+
+BZFlag: A user/contact is identified based on their BZFlag name, with an extra piece of information stored in each message and event that indicates whether or not the user was identified when that event happened. That also seems to work out just fine.
+
+Those are the most important protocols to support in Zelden. So I think this will work out just perfect.
+
+Private message windows should function with the same information, as should colorizing of users' names in messages sent by them.
+
+So... Then we run into another question: aside from the account with which a particular user is associated, can the data needed to uniquely identify a user within an account be specified as a single string, or does it need to be a more complex structure?
+
+IRC would use the nick, XMPP would use the JID, AIM would use the screen name, and BZFlag would use the username. Skype would use the username as well. Mumble, if support for Mumble is ever added, would also use the username. So I think we're good for now with just using a single string to identify a user.
+
+Ok, that just about works out the identifying information of a user. Now what about chat rooms?
+
+Actually, I'm thinking that they should work pretty much the same way. Any given room can be identified by two things: the account to which it belongs, and the name of the chat room. For IRC, this name would be the channel name. For XMPP, this would be the address of the chat room (name@conference.example.org). For BZFlag, this would be one of a few hard-coded strings such as observer, all, admin, etc.
+
+There would be some way for every protocol to verify that a particular chat room which is to be joined or added to the chat room list is of a valid format. XMPP chat rooms must follow the format x@y, IRC chat rooms must start with one of the channel prefixes (#!& and a few others; I don't remember the full list right now), and BZFlag chat rooms must be named one of a few constant strings as mentioned in the previous paragraph.
+
+So now I'm remembering that there are a ton of protocol-specific things that may need to be done (like subscribing in XMPP, or custom XMPP commands, or kicking users with a specified duration and message in BZFlag). And that's making me start to think about two separate ways to go about addressing this, both of which would work together: forms and screens.
+
+I mentioned screens near the top of this file; I'll get to them in a second.
+
+I'll also get to forms in a second, after I discuss my idea of actions.
+
+So my thing I'm thinking about with actions is that things like contacts and accounts and chat rooms and users and things like that could have actions associated with them. Actions have a name, optionally a description, and some information describing what should happen when said action is triggered. There are three things I'm thinking can happen when an action is triggered:
+
+1: A message is sent to the server indicating that the action was triggered by the user. This message will include information abuot the object on which the action occurred. When the server sends a response, it will be shown to the user, unless the response does not include text to show to the user.
+
+2: A form is shown to the user. Forms, right now, are simply lists of fields; each field has a name and optionally a description. Each field is shown as a text field; I may add more field types at some point. The form has a cancel button and any number of buttons specified along with the action; when one of these is pressed, the data in the form, information about which button was pressed, and information about the object that this action happened on are sent to the server in a message. When a response arrives, it will be shown to the user, unless the response does not include text to show to the user.
+
+3: A screen is opened. This needs a lot more thought, but the idea would be that information about the action and the object on which it was triggered would be sent back to the server, and it would ask the plugin that registered the action for the HTML that it should show, and then send it back to the client. The screen could then communicate with the plugin 
 
 
 
