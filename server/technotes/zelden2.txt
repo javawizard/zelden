@@ -126,7 +126,96 @@ That might actually allow accounts to be implemented in terms of settings, but I
 
 Also, actions within settings folders should be disableable as well, but their disabled state should be tri-value: enabled, disabled, or follow-folder, the latter of which means that the action's enabled state follows that of its parent folder.
 
-(Also, on alarms: the description for each alarm's folder could read "This alarm will go off in 17 hours and 42 minutes" if it's enabled, or "This alarm is disabled" if it's disabled. This also highlights the need for the ability to alter the description of a setting or folder live.) 
+(Also, on alarms: the description for each alarm's folder could read "This alarm will go off in 17 hours and 42 minutes" if it's enabled, or "This alarm is disabled" if it's disabled. This also highlights the need for the ability to alter the description of a setting or folder live. There should, however, be a setting provided by the alarm plugin that can be used to specify how often these descriptions should be updated in order to prevent tons of updates from draining the battery of Android clients.)
+
+So now I'm wondering if I can make this notion of actions into a concept that can be used throughout other parts of Zelden as well. Specifically, I'm wondering what would happen if notifications had actions attached that were triggered whenever the notification was clicked.
+
+That would require a seventh response to an action: the ability to open up a particular view. And views need to be specified further as well.
+
+But before I get on to views, and how the action system might be generalized, I'm going to think a bit about notifications.
+
+So... what are notifications and how do they work?
+
+Notifications are things that can be created by Zelden itself or by a particular plugin. They are shown on all clients; there's intentionally not a way to create a notification that shows up on only one client. It will, however, be possible to suppress a notification temporarily on a particular client, although that client can still see it; the notification just would make itself insignificant in a client-specific way.
+
+So... Notifications are things that can be created and shown, and every client shows them. They can be dismissed, which removes the notification from all clients. They can be suppressed for a specific duration, which makes the notification insignificant in a client-specific way; I'm thinking that, for the desktop client, the system tray icon would stop flashing and just display a tiny symbol in one corner if there are only suppressed notifications (as opposed to flashing and displaying a largeish symbol). The android client would do something similar; perhaps have the normal Z icon with a small circle in a corner, instead of the entire Z changing into some message thing or whatever like would happen when a non-suppressed notification is present.
+
+It should be possible for notifications to be suppressed for only a specific client, and to that end I'm thinking that clients should have names. When you set up a connection to a particular Zelden Server, you specify the name that the client should connect as. That way the server can identify clients when they reconnect. If a client connects and identifies successfully and a client with the same name is already connected, the server will disconnect that client, and warn the entire system that a duplicate client was just removed from the network via a notice to some system view or something.
+
+So, notifications are created with a unique integer id and some more info that will probably be stored as a JSON object so that I can change it in the future. The information, right now, is the text of the notification, the plugin that created it (or some special value if Zelden itself created it; I'll get to situations where this can happen in a bit), and a plugin-specific object providing more information about the notification.
+
+Actually... I'm getting too much into details. Let me back up and think of what I want notifications to be able to do.
+
+I want it so that when a highlight or a private message arrives, a notification can be sent out to all connected machines. These notifications would also be persistent, meaning that they would be stored in the database so that in the event of a server crash, they would still be available to clients. And, of course, I want it so that a client connecting to a server will see all currently-existing notifications, even if it wasn't connected when they happened.
+
+I want the ability for a user to put a notification into a suppressed state, where it still exists and it's still possible to view it from a client but where it's not very obvious that it's there and where the client doesn't take exorbitant measures that it normally would with normal notifications (like toasts and flashing icons) to let the user know that it's there. I want it to be possible for a user to suppress a notification either globally or just for the client that they're on, and I want it to be possible for a user to suppress the notification for other computers as well. I want notifications to be suppressable like this only for a specific duration (or more accurately, until a specific date) after which they return to normal. I want some way to be able to suppress notifications at creation time via plugins so that, for example, a plugin can suppress notifications for some clients while others are not idle. (and clients should report how long they've been idle.)
+
+So I just thought of some more ideas while taking my shower today (2011.08.11). It should be possible to create ongoing notifications. These are similar in intent to Android's ongoing notifications; unlike Android's ongoing notifications, however, Zelden ongoing notifications have some functional differences from Zelden normal notifications. In Zelden, only normal notifications are stored in the database; ongoing notifications are volatile, like the settings schema, and therefore must be recreated after a server restart.
+
+Notifications can be switched from normal to suppressed by the user werfself, and set to suppressed on some machines while normal on others. Ongoing notifications, however, are ongoing no matter what, and this can't be changed by the end user. The idea would be that ongoing notifications could be used for things like a plugin that automatically suppresses things based on channel; it could show what channels it's currently auto-suppressing as ongoing notifications. It would store that list on disk every time it's updated, and when the plugin loads, it would re-create the ongoing notifications for it. (except that I think it will just use a single ongoing notification to mention all of the channels/users/accounts that are currently on auto-suppress.
+
+It should also be possible to group notifications by the plugin that created them. I might also make it possible to group notifications by some other criteria that could be specified by each plugin in the future.
+
+Anyways... So I want there to be ongoing notifications that don't bug the user but let them know about all of the ongoing things that they should be aware about.
+
+So I've decided that I want it to be possible to suppress a notification for an infinite amount of time, the idea being that it remains suppressed until it's dismissed or until the user unsuppresses it by hand.
+
+I also want it to be possible for plugins to attach arbitrary information to a particular notification, including ones that they didn't create. I'm not going to concentrate really hard on this since I had a reason for doing it but I completely forgot said reason, but I just want to make it at least possible.
+
+So now I can't decide whether notification suppression should be stored on disk or simply in memory. Some applications of suppression, such as automatically suppressing notifications to a particular machine instead of...
+
+So I mentioned this to James Stoker, and he suggested doing a combination of both: have notifications be suppressed only in memory, but allow plugins to attach data to the notification that's persistent. I'm thinking notifications will have get_user, set_user, and list_user for getting, setting, and listing user-defined JSON values. Each one of those calls will update the notification in the database.
+
+Notifications, then, can have potentially several different suppressions attached to them. So long as at least one suppression is present on a notification, it remains suppressed. Each suppression tracks the plugin that added it and the duration that the suppression should last for, which can potentially be 0 to represent an indefinite suppression. Zelden will automatically remove each suppression as its duration elapses, and suppressions can be manually removed by plugins.
+
+In addition to specifying a plugin and a duration, and any other attributes that the plugin might assign to the suppression object (and all of the suppress methods will take a dict of such attributes to assign on creation of a suppression), a suppression also tracks a specific client for which it applies, by name. If this is None, the suppression applies for all computers. Suppressions can be created for computers that aren't currently connected or even for those that don't exist; such suppressions won't have any effect until such a computer connects or is created.
+
+Each suppression currently active is sent out with every notification. This allows the client to show information about suppressions to the user, if they have some advanced mode enabled that would cause it to be shown. The server also computes whether or not those suppressions mean that the notification should be suppressed on that client so that the client doesn't have to.
+
+Notifications would therefore need to be able to allow actions to be attached to them. A plugin for manual notification suppression would then be present that adds a "Suppress" action to notifications, and an "Unsuppress" action to notifications that it has suppressed. It would probably show a smallish instruction or some such thing below that if the notification were being suppressed by another plugin indicating such so that the user knows that they need to do something else to unsuppress it.
+
+Hm... Now I'm thinking it might be good if there was a standardized manual suppression-for-a-particular-duration mechanism so that automatic channel-based suppression could be unsuppressed by the manual plugin. This needs more thought...
+
+Actually, let me get back to the "what do I want this to be able to do" thing and see if I can't work something out. So, some things that might or might not be written as plugins that I want to be happenable:
+
+-----------------------------
+
+1: I want notifications to occur when a highlight or a message arrives for my username, and possibly some other strings on a per-account or global basis.
+
+2: I want notifications to be persistent, so that if I have an active notification, and I reconnect or restart Zelden Server, I will still see that notification.
+
+3: I want my manually-suppressing a notification to be persistent, so that if I suppress a notification globally or on a specific computer for a day, then disconnect or restart Zelden Server, that notification will still be suppressed until a day from when I originally suppressed it. (Thus suppression durations should be stored as dates to unsuppress at, not remainingd durations.)
+
+4: I want to be able to suppress a notification for all clients for, say, a day.
+
+5: I want to be able to suppress a notification on my android for, say, a day, or indefinitely, but not have it suppressed on my computer.
+
+6: I want to be able to suppress a notification on my computer from my android, exactly the same as I would be able to if I were actually at my computer.
+
+7: I want to be able to unsuppress a notification for any particular computer, or for all computers, from any computer. If I unsuppress a notification for a single computer, I'm ok with it being converted to a computer-specific-suppressed notification that happens to be suppressed for all other computers that the server has ever seen.
+
+8: I want to be able to suppress a notification on my android for, say, a day, and then suppress it on my computer (or suppress it on my computer from my android) for, say, two days.
+
+9: I want to be able to configure Zelden so that it will suppress notifications on my android as long as my laptop is not idle, and by "not idle" I mean that there's been mouse movement at my laptop in the last five minutes.
+
+10: I want to be able to set particular channels and PMs to automatically suppress notifications coming from highlights or messages in said channels or PMs. I also want to have the option of setting this to a whitelist configuration, where notifications are suppressed from said channels/pms except for ones on the whitelist. I want the ability to extend this in the future to be able to specify specific computers for each channel for which notifications should be suppressed. *
+
+11: I want to be able to specify that notifications are to be suppressed for a certain device during certain times or situations, but I want this to be implementable via a plugin so that said times/situations can be customized. Notifications suppressed because of this should be unsuppressed at the end of this delay. I'm ok with making it so that notifications can't be unsuppressed during this time. (James Stoker specifically wants the ability to suppress all notifications for his laptop when he's in certain locations.)
+
+12: I want the channel or pm corresponding to a notification to become switched to when I dismiss that notification.
+
+13: I want a way to visit the channel or pm corresponding to a notification without dismissing it.
+
+14: I want the channel or pm corresponding to a notification to scroll to the message that triggered the notification when I dismiss the notification or instruct the notification to open the channel/pm associated with it.
+
+-----------------------------
+
+* This made me think of an excellent use for alternate implementations of Setting besides StoredSetting: each channel could have two settings, "suppress notifications" and "don't suppress notifications" that blacklist and whitelist that channel, respectively, and then there would be a global setting for choosing whether the blacklist or whitelist is used. To allow for an easy way to see if any channels are blacklisted or whitelisted and modify them all together, two global settings, "suppressed channels/pms" and "non-suppressed channels/pms" could be present, each one being a multi-value multiple choice setting, which is actually provided by a custom subclass of Setting that backs the available choices from the list of channels and pms and that backs the current values from those channels and pms which have their "suppress notifications" and "don't suppress notifications" settings set, respectively. It would most likely not allow reordering of values and complain if values were reordered via a toast, and it would also most likely not allow duplicate values. Anyways, back to the topic at hand.
+
+Ok, making that list helped with things. I'm starting to work out a solution that I think can satisfy all of those items.
+
+The idea would be that notifications are stored in the database. They contain... this needs more thought, do they dispatch to the plugin on click, or switch to the appropriate conversation manually, or can this be specified (what happens), which also brings up the idea that perhaps reactions can be part of actions too, meaning that client-side components can be instructed to do something client-side, and so on... which could allow actions in settings hierarchies to shortcut to, say, other settings, or channels, etc... More thought needed on this... Also allow these notifications to auto-dismiss, meaning that when you tr... or hm, just have some sort of way to make a notification's click action be to dismiss it and then to switch to that conversation, which would allow menu items to dismiss notifications too... Maybe merge actions and reactions and just have them be actions, where one particular type of action is to send a particular JSON object or something to a particular plugin, and that would also include another JSON object containing info about whatever it was that caused the action to be sent, and then that sends back another action or a series of actions that should happen, and actions are client-side things like switch to a particular channel/pm, etc, and dismissing a notification would be a server message to zelden telling it to dismiss the notification, and something like that... Needs more thought.
+
 
 
 
