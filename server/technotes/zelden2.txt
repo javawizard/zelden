@@ -208,6 +208,10 @@ Actually, let me get back to the "what do I want this to be able to do" thing an
 
 14: I want the channel or pm corresponding to a notification to scroll to the message that triggered the notification when I dismiss the notification or instruct the notification to open the channel/pm associated with it.
 
+15: I want to be able to write a calendar plugin that provides some sort of global menu item which opens a screen where the user can add and edit calendar items. I want each calendar item, when clicked, to open a corresponding settings page for the newly-created calendar item that only shows that item's folder and the settings contained within it. I want calendar items to cause notifications at the time when they're supposed to trigger their alarm. I want each calendar notification to dismiss itself and open up a screen showing the corresponding calendar item when the notification is clicked, and I want an additional menu item to be addable to the calendar notification that opens up the corresponding calendar item without dismissing the notification.
+
+16: I want the ability to create a plugin that allows me to set alarms in some fashion. I want said alarms to be able to provide notifications that keep beeping or making noise until I shut them off, I.E. they don't go away
+
 -----------------------------
 
 * This made me think of an excellent use for alternate implementations of Setting besides StoredSetting: each channel could have two settings, "suppress notifications" and "don't suppress notifications" that blacklist and whitelist that channel, respectively, and then there would be a global setting for choosing whether the blacklist or whitelist is used. To allow for an easy way to see if any channels are blacklisted or whitelisted and modify them all together, two global settings, "suppressed channels/pms" and "non-suppressed channels/pms" could be present, each one being a multi-value multiple choice setting, which is actually provided by a custom subclass of Setting that backs the available choices from the list of channels and pms and that backs the current values from those channels and pms which have their "suppress notifications" and "don't suppress notifications" settings set, respectively. It would most likely not allow reordering of values and complain if values were reordered via a toast, and it would also most likely not allow duplicate values. Anyways, back to the topic at hand.
@@ -215,6 +219,26 @@ Actually, let me get back to the "what do I want this to be able to do" thing an
 Ok, making that list helped with things. I'm starting to work out a solution that I think can satisfy all of those items.
 
 The idea would be that notifications are stored in the database. They contain... this needs more thought, do they dispatch to the plugin on click, or switch to the appropriate conversation manually, or can this be specified (what happens), which also brings up the idea that perhaps reactions can be part of actions too, meaning that client-side components can be instructed to do something client-side, and so on... which could allow actions in settings hierarchies to shortcut to, say, other settings, or channels, etc... More thought needed on this... Also allow these notifications to auto-dismiss, meaning that when you tr... or hm, just have some sort of way to make a notification's click action be to dismiss it and then to switch to that conversation, which would allow menu items to dismiss notifications too... Maybe merge actions and reactions and just have them be actions, where one particular type of action is to send a particular JSON object or something to a particular plugin, and that would also include another JSON object containing info about whatever it was that caused the action to be sent, and then that sends back another action or a series of actions that should happen, and actions are client-side things like switch to a particular channel/pm, etc, and dismissing a notification would be a server message to zelden telling it to dismiss the notification, and something like that... Needs more thought.
+
+----------------------------- 
+
+GAH, I'm overdesigning this. It needs to be simpler.
+
+Ok so, here's my thought. Actions /always/ send a message to the server and that's the end of it. These messages are, however, ones where a response will be received.
+
+So we have this notion of reactions, which are things that the server can tell the client to do. They're packaged up into little bundles, and they can be included as part of other packets (such as the aforementioned response to actions), or they can be present in their own sort of "sporadic reaction" packet which tells a client sporadically to execute some sort of reaction.
+
+Reactions are things like "open this settings page, with folder X at the root and folder Y currently selected", "open this view and show it to the user", "open this screen", etc.
+
+Actions are things that contain a name and a description, the plugin that created it, and a JSON object containing its data, that can be registered to various things (settings folders (encapsulated in some sort of ActionSetting or something), notifications, conversations, accounts, the global menu, etc). When an action happens, all that it does is send a message to the server, which dispatches it to the corresponding plugin. The plugin then creates a (potentially empty) list of reactions that the client should run in response to the action and then returns them, at which point the server sends them back. The plugin might also do other things, such as dismiss notifications or change setting values, in response.
+
+So, revisiting notifications with that in mind. They should just be things where tapping a notification sends a message to the server which calls some sort of listener or whatever thingie on the plugin that created the notification. If the plugin isn't actually loaded right now, Zelden itself probably responds with a reaction showing a form that asks the user if they want to dismiss the notification since the plugin that created it is no longer running, and tapping yes would cause another thing to be dispatched to Zelden which would dismiss the notification and send back a reaction displaying a toast informing the user of the event.
+
+hm, so I'm thinking about this some more... and now I'm getting this idea of reactions all over again, where what's specified for a particular action or notification is a list of reactions to do. I'm going to make one clarification, however, which should fix some problems with the original idea: reactions must not affect server state. They must affect things on the client that won't actually change any state that the server absolutely needs to know about or that would persist between multiple connections.
+
+In fact, there's only one reaction that has the potential to indirectly effect such changes: the reaction (I haven't decided on a specific name for it yet) that causes some sort of message to be sent to a particular server-side plugin with a particular piece of data. I'm thinking it would specify the plugin to dispatch to and a JSON data object, and then Zelden would also attach a source object representing the thing that caused the action to be triggered. This will be specific to what the action is attached to.
+
+I'm going to commit this to Git so that I can erase the above stuff about actions that was more confusing than helpful and no longer relevant.
 
 
 
