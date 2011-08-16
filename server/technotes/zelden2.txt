@@ -184,7 +184,7 @@ Actually, let me get back to the "what do I want this to be able to do" thing an
 
 2: I want notifications to be persistent, so that if I have an active notification, and I reconnect or restart Zelden Server, I will still see that notification.
 
-3: I want my manually-suppressing a notification to be persistent, so that if I suppress a notification globally or on a specific computer for a day, then disconnect or restart Zelden Server, that notification will still be suppressed until a day from when I originally suppressed it. (Thus suppression durations should be stored as dates to unsuppress at, not remainingd durations.)
+3: I want my manually-suppressing a notification to be persistent, so that if I suppress a notification globally or on a specific computer for a day, then disconnect or restart Zelden Server, that notification will still be suppressed until a day from when I originally suppressed it. (Thus suppression durations should be stored as dates to unsuppress at, not remaining durations.)
 
 4: I want to be able to suppress a notification for all clients for, say, a day.
 
@@ -217,6 +217,54 @@ Actually, let me get back to the "what do I want this to be able to do" thing an
 * This made me think of an excellent use for alternate implementations of Setting besides StoredSetting: each channel could have two settings, "suppress notifications" and "don't suppress notifications" that blacklist and whitelist that channel, respectively, and then there would be a global setting for choosing whether the blacklist or whitelist is used. To allow for an easy way to see if any channels are blacklisted or whitelisted and modify them all together, two global settings, "suppressed channels/pms" and "non-suppressed channels/pms" could be present, each one being a multi-value multiple choice setting, which is actually provided by a custom subclass of Setting that backs the available choices from the list of channels and pms and that backs the current values from those channels and pms which have their "suppress notifications" and "don't suppress notifications" settings set, respectively. It would most likely not allow reordering of values and complain if values were reordered via a toast, and it would also most likely not allow duplicate values. Anyways, back to the topic at hand.
 
 I just trimmed down a bunch of stuff here; look back in Git history to find it.
+
+So, we have a concept of actions and reactions and notices. Actions are things consisting of a name, a label, a description, and a list of reactions that can be attached to various objects within Zelden such as notifications, channels, users, Zelden itself (i.e. global actions), and so on. Reactions are things to do on the client side; they can't change any server side state themselves. Types of reactions include forms, toasts, links to settings pages (specifying the root of the hierarchy to display and the folder to select), notices, and so on. Notices are a packet and a corresponding type of reaction that causes said packet to be sent to a certain plugin with a certain data object and a source object specific to what caused the notice reaction to be triggered. Thus the only way for an action to effect any server-related state change is for it to contain a notice reaction and have the server-side plugin receiving the notice effect such server-side changes. Each reaction type contains an associated JSON object providing more information specific to that particular reaction.
+
+Ok, with that out of the way, let's see if we can design a notification system that fulfills all of the above requirements.
+
+Notifications are things that are created and stored in the server-side database. Each notification has a unique integer id. It also has the name of the plugin that created it, a label, a description, an insistent flag, and a JSON userland object. These are all stored on disk. Additionally, a separate table containing all the manual suppressions that apply to the notification is stored; each entry in that table specifies the computer for which the suppression applies (there must be only one suppression per computer, and only one suppression that does not specify a computer). Notifications also have a list of actions and a list of default reactions which are run when the notification itself is simply clicked; these could be thought of as making up the "default" action for the notification. These actions and reactions, however, are not stored on disk. Zelden won't ever send out a notification without any reactions attached to it; if the reaction list ever becomes empty (and when it starts out empty, as it will when Zelden loads), Zelden will attach a reaction that opens a form telling the user that no reactions are attached and would they like to dismiss the notification, and if they hit yes a notice will be sent to Zelden which will cause it to dismiss the notification.
+
+Notifications can be created and dismissed only on the server-side. They can be created and dismissed by any plugin. This satisfies #1 on the list of objectives for notifications.
+
+The current list of notifications is sent to each client when it connects, and notifications, as mentioned above, are persisted in the database, with plugins restoring actions and the default set of reactions as needed. This satisfies #2 on the list.
+
+A UI will be presented to clients whereby a suppression can be added for a particular client, or for all clients, or a particular suppression (or all suppressions) removed. Plugins will have access to the mechanism for doing this as well. Adding a suppression for a computer that already has one will cause the existing one to be replaced. This satisfies #3.
+
+A suppression can be added that applies to all computers. This satisfies #4.
+
+A suppression can be added that applies only to a specific computer. This satisfies #5.
+
+The user would be able to choose that the suppression they are creating should apply to a different computer than the one from which they are connecting. This satisfies #6.
+
+Arbitrary suppressions can be removed from any client. This satisfies #7.
+
+Different suppressions can have different durations. This satisfies #8.
+
+Now we get into another feature: automatic suppressions. The above suppression mechanism I'm calling manual suppressions; automatic suppressions are suppressions that only persist as long as a particular instance of Zelden Server is running, same as actions and reactions on notifications. They cannot be added, modified, or removed by the user; they can only be added, modified, and removed by plugins, though the user will be able to see that they are present. They have the same features as manual suppressions other than that, except that multiple automatic suppressions may exist for a particular computer, and each one has a name, the plugin that created it, and a userland object which can be used by the plugin to tell multiple instances apart.
+
+A plugin could then be written which monitors my laptop's idle status and applies an automatic suppression to all notifications for my android when it is idle but removes said suppression when it is no longer idle. It would also listen for notifications being created and apply said suppression to them if my laptop is currently idle. This satisfies #9.
+
+Plugins would have access to the manual suppression facility as well. This would satisfy #10 if I implement it to create manual suppressions as I plan on doing so that users can remove the suppression if they want; otherwise, #10 would be satisfied by the automatic suppression system.
+
+The automatic suppression mechanism is available to plugins (and, as mentioned above, /only/ available to plugins, not to the end user). This satisfies #11.
+
+Notifications can have reactions attached to them. The first such reaction could switch to a particular channel (there would be a type of reaction that opens a particular channel or pm) and the second reaction could notice the server with a particular notice to which the plugin that created the notification would respond by dismissing the notification. This satisfies #12.
+
+A custom action can be attached to a notification that only has the reaction that opens the corresponding channel, without noticing the server to dismiss the notification. This satisfies #13.
+
+The reaction specifying that a particular channel should be opened would likely have a particular entry in its associated information object specifying that a particular message should be scrolled to, and perhaps that a border should be shown around said message for a few seconds. This satisfies #14.
+
+A particular type of reaction would be present that opens up a screen with certain parameters passed to said screen. This, along with the facilities that satisfy #12 and #13, would satisfy #15.
+
+Notifications have an insistent flag that specifies whether or not the client should continuously bug the user until they dismiss the notification, or until the insistent flag gets unset. This satisfies #16.
+
+-----------------------------
+
+Wow, I did it. I actually designed the notification system.
+
+And it looks pretty good.
+
+Now... what's next...
 
 
 
