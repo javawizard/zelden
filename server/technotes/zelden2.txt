@@ -286,10 +286,15 @@ So... reaction types:
 
 I think that's a good list of reactions for now. So then, of course, I need to think about how to do accounts, channels, users, pms, and conversations, and, of course, how views play into all that.
 
+That also brings up a question: should views be persistent and append-only? There are a lot of advantages to that: clients can cache data that they receive for a view so that only new messages need to be downloaded when the client attaches to the view. (Sane clients would, of course, have some functionality allowing the user to clear this cache.)
 
+This sounds like a good way to go. I'll plan on this for now, that views are not strictly MVC but instead are persistent named things that can be written to by plugins and by Zelden itself. I need to think more about whether plugins write to account-related views directly or whether they send messages and events to Zelden through some other mechanism.
 
+So now we get into another interesting problem: views should be able to show an aggregate of data from multiple sources. For example, a view for a particular channel should show things coming from that channel, certain things coming from the corresponding server (such as connects, disconnects, and quits), and certain global things (such as clients attaching and detaching).
 
+It would be nice if which sources contribute to a particular view could be customized on the client side so that, for example, global events could be hidden from a channel. But then it becomes a question of how important that is vs the added complexity.
 
+This also plays into how caching messages on the client side would need to work. (And note for tomorrow: figure out whether or not it should also be possible to hide events of a particular type, because if that's possible, then that could just be used to hide events from a particular source by hiding all of the type of event that that source issues. Just a thought.)
 
 
 
