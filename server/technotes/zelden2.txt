@@ -266,6 +266,28 @@ And it looks pretty good.
 
 Now... what's next...
 
+I think what I'm going to do next is write out a list of the reactions that I'm thinking should be possible at this point.
+
+So... reaction types:
+
+    null: This reaction does nothing. It's present so that it can be specified as the single reaction in the default reaction list for a notification in order to tell the client that it really should do nothing when the notification is tapped; if an empty reaction list were specified, Zelden Server would add a reaction allowing the user to manually delete the notification under the assumption that the plugin responsible for the notification is no longer installed.
+    
+    settings: This reaction opens a particular settings page. Its data object contains three keys: root, the path to the folder that should be shown as the root of the settings window to be opened, name, the name to show in place of the actual name for the root (this key can be ommitted, in which case the root's actual folder name will be used), and folder, the folder to actually view, which should be the root or one of its children (and this can be omitted as well, in which case the root will be used). If a window rooted at the specified root is already open, the client can (and should, if possible and not really difficult) re-use that window and simply move the selection to the specified folder.
+    
+    toast: This reaction shows a toast to the user. It has three keys: label, description, and text. Label is the caption to show and description is the description to show. This will be used on clients that support toasts containing a prominent label and a less-prominent description. Text is the single piece of text to show on clients that only support a single chunk of text. If text is not specified, then label and description must be, and vice versa; if both are specified, clients can choose whichever best fits their type of notification. Android, for example, will use text if possible since Android toasts only support a single blob of text; the Linux client will use label and description since libnotify, which it will use, supports the notion of a separate label and description.
+    
+    form: This reaction shows a form to the user. I'll provide more detail on this later, and I'll probably get Zelden fully working before I detail and implement it.
+    
+    notice: This reaction sends a notice to a particular plugin in the server. Two keys are used: plugin and data; data is optional and will be treated as if null if not supplied. plugin is the name of the plugin to dispatch the notice to. When a notice reaction is executed, a message is sent to the server containing the plugin, the data, and the source of the event that triggered the reaction; this is specific to what the reaction was supplied as part of, and I'll discuss this in more detail later. The server then calls the specified plugin's global notice() function, passing in three arguments: the client from which the notice was received, the data object (which should, of course, be valid JSON), and the source, in some to-be-defined format. The plugin's notice function can do any server-side activity it wants, such as dismissing notifications, broadcasting other reactions, and so on.
+    
+    screen: This reaction opens a screen with a particular bit of HTML in it. That bit of HTML has access to JavaScript functions that allow it to interact in various ways with the server. I haven't worked out the specifics yet but the idea is that the client can push things to various plugins in the server and vice versa. The idea would also be that the bit of HTML could either be supplied as part of the reaction, or some sort of thing could be specified for how to request that bit of HTML from a particular plugin.
+    
+    view: This reaction opens a particular view. I still need to work out the specifics of how views work and are addressed before I know what the format of this reaction will be.
+
+I think that's a good list of reactions for now. So then, of course, I need to think about how to do accounts, channels, users, pms, and conversations, and, of course, how views play into all that.
+
+
+
 
 
 
