@@ -296,6 +296,56 @@ It would be nice if which sources contribute to a particular view could be custo
 
 This also plays into how caching messages on the client side would need to work. (And note for tomorrow: figure out whether or not it should also be possible to hide events of a particular type, because if that's possible, then that could just be used to hide events from a particular source by hiding all of the type of event that that source issues. Just a thought.)
 
+And then we also have some other things to worry about, such as how to populate the list of nicknames of people currently at a view or specify for a particular view that such a list is not present, and how to be notified when a client starts typing a message into a view, stops typing said message (and start-typing messages will be resent once every N seconds, where N is something like 30, and if the server doesn't receive one for X seconds, where X would probably be around 45, then it unmarks the view as being typed into), and actually sends said message. The server should be able to find out which client the start-type, stop-type, and send-message things come from; typing is tracked on a per-client basis and the view is being typed into if at least one client is typing into it, and message sending will log what client sent the message.
+
+Oh shoot... Now I remember the chat monitor... and how that would appear to need virtualized views...
+
+Ok, maybe I'm over-generalizing views too much. I'm thinking: would there ever really be any good use for views outside of having one per channel/pm and one per server and one globally?
+
+But then there might; for example, it would be nice for a plugin to have a view of its own to log random information to. It would also be nice to be able to have a plugin create a view to which it logs, for example, a message whenever a notification is created.
+
+So then I'm wondering: what if we have sources, where a source is a named listing of messages that can be added to or removed from, and views, where a view specifies a list of sources which it then aggregates together? Clients could store this information about what views exist (the list of views that exist would be known by every client and updated by the server) for offline use when looking through messages, and then provide an extra view that shows /all/ sources (sources are also known by clients and are updated by the server) so that if a source has no view that uses it, the user can still read messages from it.
+
+Under that idea, clients would attach to sources instead of to views...
+
+Hm, I'm realizing more and more that this makes attachment and backlog requesting really complicated, and so now I'm wondering if there's a better way to do it...
+
+You know what, I'm going to make out a requirements list like I did for notifications and see if that helps.
+
+So, things that I want to be able to do, relating to conversations and such:
+
+1: I want to be able to select a channel or pm in the list of channels/pms (which would probably be on the home screen) and view it.
+
+2: I want to be able to see messages from a channel/pm in the view. This is probably obvious.
+
+3: I want only channels/pms that I'm currently viewing or that are currently open in a window to receive any messages over the network, in order to save bandwidth.
+
+4: I want to be able to scroll up the channel/pm and see messages from previous dates, all the way back until when the first relevant message was received.
+
+5: I want to be able to see some global events, such as an account being connected or being disconnected, a Zelden client attaching or detaching, and optionally when I change my local account status, in each channel/pm, but I don't want these to take up extra storage for every channel if these events are global or global to a particular server.
+
+6: I want to be able to see a list of users that are currently present in a channel, and perform actions on each of these users.
+
+7: I want the aforementioned user list to be hidden for pms, since user lists don't make sense for them.
+
+8: I want typing notifications to be sent correctly so that when I'm typing, other people on protocols that support it see that I'm typing. I want to appear to be typing as long as any client from which I'm attached registers that I'm typing. I want this typing status to time out after a certain number of seconds (I'm thinking 30 or 40 right now) of not being able to talk with the client so that a pingout causes the client to appear to stop typing after the above mentioned number of seconds.
+
+9: I want to be able to tell when the person with which I'm having a conversation is typing. I want the client to be able to tell what this means so that it could, for example, show a typing icon instead of "Bob Jones is typing" as a piece of text. I do want the ability to tell a client that multiple people are typing in case I'm connected to a chat room on a protocol that supports that.
+
+10: I want it to be possible to attach actions to each message.
+
+11: I want there to be some way to view more info on a particular message, which would open up a page providing details on that message. This might show things like the user's username and hostname for a message received from an IRC user, or the client from which a message was sent for a message sent by the local user. (This could possibly be implemented by Zelden itself as an action on the message that opens a screen displaying the additional information.)
+
+12: I want the nicknames of messages to show up certain colors depending on the nickname (and this string on which this is dependent should be protocol-specifiable).
+
+13: I want it to be possible to change how said colors show up, so for example have the background of that message instead be colorized.
+
+Hmm... I think I might be asking too much for now. I'm deciding that maybe I can do away with showing notifications for when a client connects and disconnects; this could be present simply in a global view, and users could consult that as needed.
+
+Oh also, I need to remember colorization for users, and user-related actions for messages sent by those users.
+
+
+
 
 
 
