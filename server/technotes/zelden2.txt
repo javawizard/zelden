@@ -344,7 +344,23 @@ Hmm... I think I might be asking too much for now. I'm deciding that maybe I can
 
 Oh also, I need to remember colorization for users, and user-related actions for messages sent by those users.
 
+So now I'm remembering that every client has access to a JavaScript interpreter, which makes me think that maybe it would be possible to have a notion of renderers, which are piece of JavaScript, HTML, and CSS, somehow mixed together or something, that are provided by server-side plugins for client-side plugins to use in rendering things.
 
+So here's what I'm thinking: there should be a fixed list of message types. I'll look around through various protocols in a bit and come up with a good list.
+
+This list could be later expanded by me, with the idea that themes would then have to upgrade themselves to support the new message types. Data would probably be represented as a JSON object, so themes could render types that they know nothing about as JSON strings as a last-ditch effort.
+
+So, for now, views of a particular channel or pm (and I am thinking that I'm just going to have channels, pms, servers themselves, and Zelden globally, and not a hugely-extensible notion of views for now) would be strictly vertical stacks of messages. The part that the theme decides is what each of those messages would look like. In some form or other, the theme would be responsible for producing a div (or some other element, but I'd think they'd all produce divs) representing a message fed into it. This div would then be displayed to the user. I'm also thinking that the theme would be able to supply stuff to put in the <head> of the view, which the theme could use to put styles and scripts into.
+
+A view could only use one theme at once; it couldn't, for example, render every other message with a different theme.
+
+So I'm thinking that a theme would supply a piece of JavaScript that could be sent out to each client. Messages would be sent to clients in the form of JSON objects whose keys are specific to the type of the message; this theme-supplied piece of JavaScript would then be called, passing in the JSON object representing the message, and it would be expected to return either a DOM node which is the div to show or a string which is the textual HTML to show; I haven't decided which yet but I'm leaning toward the former, and supplying a parseHTML function, if WebKit doesn't provide such a function already, that would parse HTML into a DOM node.
+
+(Or something like that. If DOM nodes need to be parented on creation, then I'd have that theme-supplied function accept an argument which is the parent into which the DOM node should be placed as the single child, or maybe have it inject whatever it wants into the node which it's passed and that node would be the div; it could then edit the node's attributes if it wanted and stuff.)
+
+Themes would be provided by server-side plugins, and there would be some to-be-determined way (which would likely use the settings system) for the user to decide which theme they want to use. It would also be nice if different themes could be chosen for different devices so that, for example, I could use a theme optimized for mobile devices on my Android and a more verbose theme on my normal computer. There could be a setting for the default theme and a setting for each computer where they can choose the theme to use or choose to use the default theme.
+
+So I'm also thinking t
 
 
 
