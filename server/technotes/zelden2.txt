@@ -360,10 +360,68 @@ So I'm thinking that a theme would supply a piece of JavaScript that could be se
 
 Themes would be provided by server-side plugins, and there would be some to-be-determined way (which would likely use the settings system) for the user to decide which theme they want to use. It would also be nice if different themes could be chosen for different devices so that, for example, I could use a theme optimized for mobile devices on my Android and a more verbose theme on my normal computer. There could be a setting for the default theme and a setting for each computer where they can choose the theme to use or choose to use the default theme.
 
-So I'm also thinking t
+(Quick note: I need to remember to write ClonedSetting or something which allows a database setting to be specified by specifying its schema exactly once and then instantiating it with multiple different paths, which would avoid the overhead of storing the schema, such as the label and description, several times for a setting used in multiple locations such as on every channel.)
+
+Anyways...
+
+So each client has a currently active theme, which can be changed out by the server. A theme as far as the client sees it is two things: 1, a piece of JavaScript that, when evaluated, should return a function accepting three arguments: the message to render in a to-be-determined JSON format, a div into which the message should be rendered, and the theme's data object, and said function should render said message into said div; and 2, the data object to be passed into the function, in the form of a string of JavaScript. The reason for keeping data separate from the function is so that the data can be parsed an instantiated once when the view loads up and stored in a JavaScript global, and then passed to the function from there; if it were just embedded in the function, it would have to be recreated every time a new messages were rendered, which would take time.
+
+If the theme doesn't have any relevant settings, it could just use something like the number 0 as the data object.
+
+It's up to the plugin to watch for conditions that would change the output produced by the theme and tell Zelden to instruct all client currently using the theme to reload all of their views. For example, most themes would want to watch for changes to a user's hash color (and Zelden will provide some way of watching for such changes) and effect a reload when such changes happen, since most themes would factor a user's hash color into how they render messages sent by the user.
+
+(Other quick note: channel and user views should provide a space at the top to display things like the user's current presence, the user's current status message, and the channel's current topic.)
+
+Themes would be installed into Zelden on startup or at any other time while Zelden is running by creating an instance of Theme, which accepts such parameters as the id, the JavaScript code, the JavaScript data expression, the name, the description, etc, and then registering this to a Server. (I'm thinking it should be possible to subclass Theme and override some methods such as ones used for accessing the JavaScript code and data to allow said code and data to be sourced from settings, but I can think more on that later.) Themes can also be unregistered at any time. Each theme has a unique string id; attempting to register a theme under an id that already exists will cause Zelden to throw an exception back to the caller attempting to register said theme.
+
+So, the theme can be modified by updating the JavaScript or by changing up the data object. These happen simply by modifying the attributes on the Theme instance, but when either of these happen, theme.update() must be called in order to tell it that it's been changed. (Theme will provide a pipeline that update() notifies that Zelden will attach to when a theme is registered; Zelden will, on this event being triggered, send out a message to all clients currently using this theme providing them with the new script and data object.) The theme's name and description, which are the only other theme attributes I can think of at present, can be set simply by assigning to their attributes (which would actually be properties); update() does not need to be called after this, as the new values will be pushed out automatically.
+
+Clients are allowed to not support themes if they don't want to, and render messages (which are delivered as JSON) however they like. To do that, all they have to do is not include the feature "server-side-themes" in the feature list that they send to the server as part of the initial connect message. The server won't send them any set-theme messages (which it sends to provide them with the theme to use under normal circumstances), and it will mention that the client in question doesn't support themes in the settings scren for configuring themes. Clients can also simply ignore any set-theme messages sent by the server, but that results in a notice not being present in the settings page for themes, which might confuse the user.
+
+So I think that's it about themes.
+
+So, there's a global view, a view for each server, a view for each channel, and a view for each user.
+
+So, things each view should have:
+
+	A list of users present in the channel, for channel views. The list of users in such a view is kept up-to-date when the view is attached to by the server. I'm not sure yet what data each of these users carries, but it should be possible for them to have actions attached to them, they should be shown in groups (where each group has a name and a label; groups are things like "Operators" and "Voiced"), they should be able to have server-specified info in some form or other that can show when an info menu item is chosen, they should contain enough information that a hash color can be generated for them by the client or that it can select an appropriate contact to apply to them, they should contain presence information if available, and they should provide a name for use with autocompletion.
+	
+	An area near the top that, for channels, indicates the current topic, and for users, indicates the user's current status message and their presence. This should also have a button for editing the topic on protocols that support it; such a button would probably also warn the user if they try to use it and they're not +o or a protocol-specific equivalent, although it would allow them to go ahead if they wanted to.
+	
+	A clickable display at the top indicating the date range of chat messages currently being looked at in the view. This could be clicked to select a date (and optionally time) to go to.
+	
+	A text box at the bottom for entering messages, with a send button, some sort of button for converting it to a text area and back to a text field, and some facility for auto-completing from the list of users for channel views.
+	
+	Some sort of location to display a sort of status message when the user being talked with is typing. This would simply not be used in channels at present, although in the future I would like to expand it to be able to show multiple typing notifications at a time in channels so that protocols that support typing notifications in channels (and I'm hoping to write one at some point) can show such information in Zelden.
+	
+	A list of actions attached to the view. I'm thinking these should include those attached to the corresponding channel in the contact list and similar for users; whether or not those sets of actions are /exactly/ the same (I.E. no actions specific to views) is to be determined.
+
+You know what, I'm getting too far into views without thinking about what they represent: channels, users, and accounts. I need to think abuot those some more.
+
+I think I'm going to make a requirements list for accounts, users, channels, and contacts:
+
+	1: I want to be able to create accounts that use a particular protocol. I don't want to be able to change the protocol after the account has been created.
+	
+	2: I want to be able to configure account-specific settings, such as the server for IRC, the JID for XMPP, etc.
+	
+	3: I want to be able to set whether or not an account is currently enabled; disabling it would cause it to disconnect from all of the servers that it's connected to and such. I want all views of the account to still show messages but to respond with a "disabled" sort of toast if the user tries to send anything, and I want views to show that the account is not currently enabled. (I want said disabled toasting to be at the protocol level, however, so that protocols that allow slash commands while offline can still work.)
+	
+	4: I want some way to be able to get rid of accounts that I'm no longer using. And specifically, I don't want them to take up any RAM on the server once I've gotten rid of them. However, I still want to be able to view logs for said accounts, and I still want the contacts (and especially their hash colors) to be preserved. And I want it to be possible to "undelete" an account, and I'm fine with requiring accounts to be undeleted to view logs in them. A deleted account, however, must not take up extra RAM until it's undeleted.
+	
+	5: I want contacts to have presence information (available, idle, away, DnD, etc, the amount of time that the contact has been idle, and the contact's status message). Actually, I want users in general to have this. (and my next point will hopefully mark a distinction between users and contacts.) I want a requirement, however, that presence information is only sent to a client when the list of contacts/users/etc is being viewed, or where a certain contact/user's presence is needed such as when a view is showing for a particular user or when a channel is showing that contains that user in its user list.
+	
+	6. I want to be able to somehow converse with users and see them in channels and get information on them without having to add them as a contact. I want to be able to see their presence if it's available; otherwise, I want to be able to tell that their presence information is unavailable. I want to be able to see a list of users with which I am conversing that aren't necessarily on my list of contacts, and I want this list to be persistent across server restarts.
+	
+	7. I want to be a...
 
 
+Hang on, I might be able to solve some stuff about settings. I think what I've laid out above is good (at the top of the file) in the way of settings, but I've got some other ideas to make it so that the system could function just fine even with ten thousand different contacts. I think it would take a good deal of work but it might be doable.
 
+The idea would be to create Setting sort of classes which represent a template for a setting. Operations on them then have to pass a parent setting and a pathname, or something like that, to indicate the actual instance of the setting.
+
+Then folders would be similar. More thought still needs to go into this, but the idea is that there could be a "template", so to speak, of a conversation, which could then be instantiated for every conversation. Conversation-specific settings would somehow be addable, maybe by however you ask a folder for its children allowing different children to be returned based on the path, and then providing a listener to notify when a particular child would no longer be returned for a particular path or some such thing.
+	
+	
 
 
 
