@@ -420,6 +420,26 @@ Hang on, I might be able to solve some stuff about settings. I think what I've l
 The idea would be to create Setting sort of classes which represent a template for a setting. Operations on them then have to pass a parent setting and a pathname, or something like that, to indicate the actual instance of the setting.
 
 Then folders would be similar. More thought still needs to go into this, but the idea is that there could be a "template", so to speak, of a conversation, which could then be instantiated for every conversation. Conversation-specific settings would somehow be addable, maybe by however you ask a folder for its children allowing different children to be returned based on the path, and then providing a listener to notify when a particular child would no longer be returned for a particular path or some such thing.
+
+-----------------------------
+
+Hmm, that seems like a bit more complicated of an approach for settings than I'd like to take at present.
+
+So I'm going back to the old way of doing settings.
+
+Now then... Let's see... Hm...
+
+I do like Matias's idea of just having contacts be "starred" users/channels. The only problem I can see with that right now is the overhead of having settings stores for every user stored in memory on the server. Which makes me think of another idea...
+
+...and that idea is that we have settings be tied to disk storage for now, and not have a concept of virtual settings like I had discussed above. Virtual setting support could be added later if it becomes a really big useful thing.
+
+The reason why omitting support for virtual settings would help out so much is that then the settings scheme could be stored to disk in a database but still be constructed at runtime by deleting the database file at shutdown and creating it at startup.
+
+So the idea would be that... hmm...
+
+So I'm getting ideas on how to do this properly while preserving support for virtual settings and while not making it insanely complicated.
+
+The idea would be that we have a class called SettingStore or something. It has functions for all of the things that can be done on a setting, such as 
 	
 	
 
